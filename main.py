@@ -21,7 +21,19 @@ def animate_text(text, delay_ms=100):
         time.sleep(delay_ms / 1000)
     entry.focus() 
     
-    
+   
+def Take_data_to_login(choice):
+    with open('rep.json', 'r') as file:
+        data = json.load(file)
+
+    for element in data:
+        for platforma, dane in element.items():
+            if platforma == choice:
+                login = dane.get('login')
+                password = dane.get('password')
+                print(f"Platforma: {platforma}, Login: {login}, Hasło: {password}")
+
+ 
 #TODO sprawdzić działanie dodać sieć neuralną
 def SpeakText(command):
     engine = pyttsx3.init()
@@ -97,6 +109,9 @@ def poczOpen():
         print("Błąd podczas rozpoznawania mowy")
     elif pytanie == "tak":
         label.config(animate_text="poczta")
+        Take_data_to_login("gmail")
+        print(Take_data_to_login)
+        #TODOD pobieranie danycb z json  i wpisuwanie 
         email = "kpgebicz11@gmail.com"
         haslo = "KGP#12Q4rp_1"
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -136,33 +151,17 @@ def poczOpen():
         email = "kpgebicz11@gmail.com"
         haslo = "KGP#12Q4rp_1"
 
-
-
         print ("do kogo wysłać")
-        
         
         odbiorca=speech
         
-        
-        
-        # odbiorca = "kgebicz11@gmail.com"
         print("jaki mam wpisac temat")
-        
-        
         
         temat = speech
         
-        
-        
-        # temat = "test"
         print("podaj treść wiadomości")
-        # tresc = "test1"
-        
-        
-        
         
         tresc=speech
-        
         
         
         
@@ -278,14 +277,13 @@ def spoOpen():
                 else:
                     #TODO pobiera z speechrecognition gatuenk w jakim ma polecieć piosenka
                     print("Z jakiego gatunku mam wybrać?")
+                    gatunek=speech
             else:
                 print("Co mam puścić?")
+                track_to_play = speech
+                play_spotify(track_to_play)
     else:
         print("Puszcze coś z listy top 100.")
-
-    # Example usage of play_spotify function
-    track_to_play = "nazwa_utworu"  # Replace with the track name recognized from speech
-    play_spotify(track_to_play)
 
         
 #TODO dodać
@@ -329,12 +327,8 @@ def storyOpen():
 def transOpen():
     print("co mam przetłumaczyć")
     
-    
     transQ=speech
     
-    
-    
-    # transQ = pytanie.get()
     if "nie" in transQ:
         url = 'https://translate.google.com/'
         webbrowser.open(url)
@@ -377,33 +371,98 @@ def weather():
         print('Nie udało się pobrać danych pogodowych.')
         
 
+def run_on_first_start():
+    if not os.path.isfile("form_data.json"):
+        with open("form_data.json", "w") as file:
+            create_form()
 
-#TODO zmienićc na możliwośc zmiany hot worda // usprawienie o sieć neuralną
-# HOTWORD = "hey siri"
+def create_form():
+    def submit_form():
+        name = entry_name.get()
+        email1 = entry_email1.get()
+        password1 = entry_password1.get()  
+        email2 = entry_email2.get()
+        password2 = entry_password2.get()
+        email3 = entry_email3.get()
+        password3 = entry_password3.get()
 
-# # Set up the audio stream
-# pa = pyaudio.PyAudio()
-# stream = pa.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=2048)
+        data = {
+            "Name": name,
+            "Forms": [
+                {"Name": "Email & Password", "Entries": [
+                    {"Email": email1, "Password": password1}
+                ]},
+                {"Name": "Spotyfi", "Entries": [
+                    {"Email": email2, "Password": password2}
+                ]},
+                {"Name": "Storytell", "Entries": [
+                    {"Email": email3, "Password": password3}
+                ]}
+            ]
+        }
 
-# # Initialize the speech recognizer
-# r = sr.Recognizer()
+        with open("form_data.json", "w") as file:
+            json.dump(data, file, indent=4)
+            print("Data saved to form_data.json")
+        root.destroy()
 
-# # Loop to listen for the hotword
-# while True:
-#     # Listen for audio input
-#     data = stream.read(2048)
-#     # Convert the audio to text using speech recognition
-#     text = r.recognize_google(data, language='pl')
-#     # Check if the hotword was detected
-#     if HOTWORD in text.lower():
-#         print("Hotword detected!")
-#         # Perform further processing (e.g. speech recognition) to handle the user's command
-#         break
+    root = tk.Tk()
+    root.title("Multiple Forms")
 
-# # Clean up the audio stream
-# stream.stop_stream()
-# stream.close()
-# pa.terminate()
+# Create labels and entries for name
+    label_name = tk.Label(root, text="Name:")
+    label_name.grid(row=0, column=0, padx=10, pady=5)
+    entry_name = tk.Entry(root)
+    entry_name.grid(row=0, column=1, padx=10, pady=5)
+
+    # Email & Password frame
+    frame_email_password = tk.LabelFrame(root, text="Email & Password")
+    frame_email_password.grid(row=1, columnspan=2, padx=10, pady=5)
+
+    label_email1 = tk.Label(frame_email_password, text="Email:")
+    label_email1.grid(row=0, column=0, padx=10, pady=5)
+    entry_email1 = tk.Entry(frame_email_password)
+    entry_email1.grid(row=0, column=1, padx=10, pady=5)
+
+    label_password1 = tk.Label(frame_email_password, text="Password:")
+    label_password1.grid(row=1, column=0, padx=10, pady=5)
+    entry_password1 = tk.Entry(frame_email_password, show="*")
+    entry_password1.grid(row=1, column=1, padx=10, pady=5)
+
+    # Spotyfi frame
+    frame_spotyfi = tk.LabelFrame(root, text="Spotyfi")
+    frame_spotyfi.grid(row=2, columnspan=2, padx=10, pady=5)
+
+    label_email2 = tk.Label(frame_spotyfi, text="Email:")
+    label_email2.grid(row=0, column=0, padx=10, pady=5)
+    entry_email2 = tk.Entry(frame_spotyfi)
+    entry_email2.grid(row=0, column=1, padx=10, pady=5)
+
+    label_password2 = tk.Label(frame_spotyfi, text="Password:")
+    label_password2.grid(row=1, column=0, padx=10, pady=5)
+    entry_password2 = tk.Entry(frame_spotyfi, show="*")
+    entry_password2.grid(row=1, column=1, padx=10, pady=5)
+
+    # Storytell frame
+    frame_storytell = tk.LabelFrame(root, text="Storytell")
+    frame_storytell.grid(row=3, columnspan=2, padx=10, pady=5)
+
+    label_email3 = tk.Label(frame_storytell, text="Email:")
+    label_email3.grid(row=0, column=0, padx=10, pady=5)
+    entry_email3 = tk.Entry(frame_storytell)
+    entry_email3.grid(row=0, column=1, padx=10, pady=5)
+
+    label_password3 = tk.Label(frame_storytell, text="Password:")
+    label_password3.grid(row=1, column=0, padx=10, pady=5)
+    entry_password3 = tk.Entry(frame_storytell, show="*")
+    entry_password3.grid(row=1, column=1, padx=10, pady=5)
+
+    submit_button = tk.Button(root, text="Submit", command=submit_form)
+    submit_button.grid(row=4, columnspan=2, padx=10, pady=10)
+
+    root.mainloop()
+
+run_on_first_start()
 
 #TODO zamiienić na okno w stylu kalwisza windows // klasy pwiadomienia 
 root = tk.Tk()

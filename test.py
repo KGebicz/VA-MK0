@@ -1,37 +1,66 @@
-import requests
+import sys
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGroupBox, QLabel, QLineEdit
 
-def pobierz_pogode(city):
-    # Adres URL API MetaWeather
-    url = f'https://www.metaweather.com/api/location/search/?query={city}'
 
-    # Wyślij zapytanie HTTP
-    response = requests.get(url)
+class Formularz(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
 
-    if response.status_code == 200:
-        # Jeśli zapytanie było udane, pobierz pierwsze id lokalizacji
-        woeid = response.json()[0]['woeid']
+    def initUI(self):
+        self.setWindowTitle('Formularz')
+        self.setGeometry(100, 100, 400, 300)
 
-        # Utwórz nowe zapytanie, aby pobrać dane pogodowe na podstawie woeid
-        url = f'https://www.metaweather.com/api/location/{woeid}/'
-        response = requests.get(url)
+        layout = QVBoxLayout()
 
-        if response.status_code == 200:
-            data = response.json()
-            return data
-        else:
-            return "Nie można pobrać danych pogodowych."
-    else:
-        return "Nie można znaleźć miasta."
+        # Grupa dla maila
+        group_mail = QGroupBox("Mail")
+        layout_mail = QVBoxLayout()
+        self.mail_login = QLineEdit()
+        self.mail_password = QLineEdit()
+        self.mail_login.setPlaceholderText("Login")
+        self.mail_password.setPlaceholderText("Hasło")
+        self.mail_password.setEchoMode(QLineEdit.Password)  # Ukryj wpisywane znaki
+        layout_mail.addWidget(self.mail_login)
+        layout_mail.addWidget(self.mail_password)
+        group_mail.setLayout(layout_mail)
+        layout.addWidget(group_mail)
 
-miasto = "London"
-wynik = pobierz_pogode(miasto)
+        # Grupa dla kalendarza
+        group_calendar = QGroupBox("Kalendarz")
+        layout_calendar = QVBoxLayout()
+        self.calendar_login = QLineEdit()
+        self.calendar_password = QLineEdit()
+        self.calendar_login.setPlaceholderText("Login")
+        self.calendar_password.setPlaceholderText("Hasło")
+        self.calendar_password.setEchoMode(QLineEdit.Password)  # Ukryj wpisywane znaki
+        layout_calendar.addWidget(self.calendar_login)
+        layout_calendar.addWidget(self.calendar_password)
+        group_calendar.setLayout(layout_calendar)
+        layout.addWidget(group_calendar)
 
-if isinstance(wynik, str):
-    print(wynik)  # Wyświetl komunikat o błędzie
-else:
-    print(f'Pogoda w {miasto}:')
-    for day in wynik['consolidated_weather']:
-        print(f'Data: {day["applicable_date"]}, '
-              f'Min temperatura: {day["min_temp"]}, '
-              f'Max temperatura: {day["max_temp"]}, '
-              f'Opady: {day["weather_state_name"]}')
+        # Grupa dla spotykania
+        group_meeting = QGroupBox("Spotkanie")
+        layout_meeting = QVBoxLayout()
+        self.meeting_login = QLineEdit()
+        self.meeting_password = QLineEdit()
+        self.meeting_login.setPlaceholderText("Login")
+        self.meeting_password.setPlaceholderText("Hasło")
+        self.meeting_password.setEchoMode(QLineEdit.Password)  # Ukryj wpisywane znaki
+        layout_meeting.addWidget(self.meeting_login)
+        layout_meeting.addWidget(self.meeting_password)
+        group_meeting.setLayout(layout_meeting)
+        layout.addWidget(group_meeting)
+
+        self.setLayout(layout)
+
+
+def run_app():
+    app = QApplication(sys.argv)
+    window = Formularz()
+    window.show()
+    sys.exit(app.exec_())
+
+
+if __name__ == '__main__':
+    run_app()
