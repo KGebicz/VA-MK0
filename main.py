@@ -13,16 +13,79 @@ import speech_recognition as sr
 import pyttsx3
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes 
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import googleapiclient.discovery
+from googleapiclient.discovery import build
+import os.path
+from googleapiclient.errors import HttpError
 
-def animate_text(text, delay_ms=100):
-    for i in range(len(text) + 1):
-        label.config(text=text[:i])
-        root.update()
-        time.sleep(delay_ms / 1000)
-    entry.focus() 
-    
+
+SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+API_KEY = 'YOUR_API_KEY'
+CLIENT_SECRET_FILE = 'path/to/client_secret.json'
    
+#CORE
+def speak(text):
+    engine = pyttsx3.init()
+    engine.say(text)
+    engine.runAndWait()
+def process_response(response):
+    speak(response)
+def speech(r):
+    with sr.Microphone() as source2:
+        try:
+            print("Rozpoczynam nasłuchiwanie...")
+            audio2 = r.listen(source2, timeout=0.0)
+            MyText = r.recognize_google(audio2, language="pl")
+            MyText = MyText.lower()
+            
+            print("Rozpoznano tekst: {}".format(MyText))
+            return MyText
+            
+        except sr.UnknownValueError:
+            print("Nie rozpoznano żadnej wypowiedzi.")
+            return None
+            
+        except sr.RequestError as e:
+            print(f"Błąd związany z usługą rozpoznawania mowy: {e}")
+            return None
+def Speech_Start_Stop():
+    r = sr.Recognizer()
+    
+    while True:
+        try:
+            with sr.Microphone() as source2:
+                print("Czekam na wypowiedź...")
+                audio2 = r.listen(source2, timeout=0.0)
+                MyText = r.recognize_google(audio2, language="pl")
+                MyText = MyText.lower()
+
+                print("Rozpoznano tekst: {}".format(MyText))
+
+                # Sprawdzamy, czy wypowiedziano "cześć" i reagujemy odpowiednio
+                if "cześć" in MyText:
+                    print("Wykryto wypowiedź 'cześć'. Uruchamiam odpowiednią akcję.")
+                    action()
+
+                PanicWords = ["stop zero jeden", "stop 01"]
+                # Sprawdzamy, czy wypowiedziano którekolwiek z słów kluczowych z PanicWords
+                if any(word in MyText for word in PanicWords):
+                    print("Wykryto wypowiedź z listy słów kluczowych. Zatrzymuję program.")
+                    break
+
+        except sr.UnknownValueError:
+            print("Nie rozpoznano żadnej wypowiedzi.")
+        
+        except sr.RequestError as e:
+            print(f"Błąd związany z usługą rozpoznawania mowy: {e}")
 def Take_data_to_login(choice):
+    process_file('Dane.json', 'Password', mode='decrypt')
     with open('rep.json', 'r') as file:
         data = json.load(file)
 
@@ -32,74 +95,257 @@ def Take_data_to_login(choice):
                 login = dane.get('login')
                 password = dane.get('password')
                 print(f"Platforma: {platforma}, Login: {login}, Hasło: {password}")
+def encrypt(plaintext, password):
+    salt = os.urandom(16)
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        iterations=100000,
+        salt=salt,
+        length=32,
+        backend=default_backend()
+    )
+    key = kdf.derive(password.encode())
+    iv = os.urandom(16)
 
- 
-#TODO sprawdzić działanie dodać sieć neuralną
-def SpeakText(command):
-    engine = pyttsx3.init()
-    engine.say(command)
-    engine.runAndWait()
-      
-     
-def speech():
-    r = sr.Recognizer()
-    with sr.Microphone() as source2:
-        r.adjust_for_ambient_noise(source2, duration=0.2) 
-        audio2 = r.listen(source2)
-        MyText = r.recognize_google(audio2,language="pl")
-        MyText = MyText.lower()
-        # text_box.insert(END,MyText)
-    return MyText       
+    cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
 
-def action():     
-    
-    
-    fraze=speech
-    
-    
-    # fraze = entry.get()
-    
-    if "przeglądarka" in fraze or "przeglądarke" in fraze or "strona" in fraze:
-        webOpen()
-    elif "wyszukaj" in fraze or "poszukaj" in fraze or "sprawdź" in fraze or "check" in fraze:
-        webOpenwithQuestion()
-    elif "poczta" in fraze or "mail" in fraze:
-        poczOpen()
-    elif "kalendarz" in fraze or "calendary" in fraze:
-        CalOpen()
-    elif "spotyfi" in fraze or "muzyka" in fraze or "music" in fraze:
-        spoOpen()
-    elif "storytell" in fraze or "audiobook" in fraze:
-        storyOpen()
-    elif "tłumacz" in fraze or "translate" in fraze:
-        transOpen()
-    elif "dodaj" in fraze or "add to" in fraze:
-        addto()
-    elif "pogoda" in fraze or "weather" in fraze:
-        weather()
-    elif "uruchom" in fraze or "start" in fraze or "włącz" in fraze:
-        print("1")
+    return salt + iv + ciphertext
+def decrypt(ciphertext, password):
+    salt = ciphertext[:16]
+    iv = ciphertext[16:32]
+    ciphertext = ciphertext[32:]
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        iterations=100000,
+        salt=salt,
+        length=32,
+        backend=default_backend()
+    )
+    key = kdf.derive(password.encode())
+
+    cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+    decryptor = cipher.decryptor()
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+
+    return plaintext
+def process_file(file_path, password, mode='encrypt'):
+    with open(file_path, 'rb') as file:
+        data = file.read()
+
+    if mode == 'encrypt':
+        ciphertext = encrypt(data, password)
+
+        with open(file_path, 'wb') as file:
+            file.write(ciphertext)
+
+    elif mode == 'decrypt':
+        plaintext = decrypt(data, password)
+
+        with open(file_path, 'wb') as file:
+            file.write(plaintext)
+
     else:
-        print("roport")
+        print("Invalid mode. Please use 'encrypt' or 'decrypt'.")
+
+#Started
+def action():
+    process_response('co chcesz zrobić?')
+    fraze = speech(sr.Recognizer())
+
+    if fraze:
+        if any(word in fraze for word in ["przeglądarka", "otwórz stronę", "odpal stronę"]):
+            webOpen()
+        elif any(word in fraze for word in ["wyszukaj", "poszukaj", "sprawdź", "check"]):
+            webOpenwithQuestion()
+        elif any(word in fraze for word in ["poczta", "mail"]):
+            poczOpen()
+        elif any(word in fraze for word in ["kalendarz", "calendary"]):
+            CalOpen()
+        elif any(word in fraze for word in ["spotyfi", "muzyka", "music"]):
+            spoOpen()
+        elif any(word in fraze for word in ["tłumacz", "translate"]):
+            transOpen()
+        elif any(word in fraze for word in ["dodaj", "add to"]):
+            addto()
+        elif any(word in fraze for word in ["pogoda", "weather"]):
+            weather()
+        else:
+            print("roport")
+
+
+
+
+#TO FUNCTION
+def authenticate_google_calendar():
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json')
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+
+    return creds
+def check_google_calendar(creds):
+    service = googleapiclient.discovery.build('calendar', 'v3', credentials=creds)
+
+    now = datetime.datetime.utcnow().isoformat() + 'Z'
+    events_result = service.events().list(
+        calendarId='primary',
+        timeMin=now,
+        maxResults=10,
+        singleEvents=True,
+        orderBy='startTime'
+    ).execute()
+
+    events = events_result.get('items', [])
+
+    if not events:
+        print('No upcoming events found.')
+    else:
+        print('Upcoming events:')
+        for event in events:
+            start = event['start'].get('dateTime', event['start'].get('date'))
+            print(f'{start} - {event["summary"]}')
+
+def get_google_calendar_service():
+    creds = None
+
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json')
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+
+    service = build('calendar', 'v3', credentials=creds)
+    return service
+def event_exists(service, calendar_id, event_summary):
+    try:
+        events_result = service.events().list(
+            calendarId=calendar_id, timeMin=datetime.datetime.utcnow().isoformat() + 'Z',
+            maxResults=10, singleEvents=True, orderBy='startTime'
+        ).execute()
+        events = events_result.get('items', [])
+
+        for event in events:
+            if 'summary' in event and event['summary'] == event_summary:
+                return True
+
+        return False
+
+    except HttpError as e:
+        print(f'An error occurred: {e}')
+        return False
+def add_event_to_calendar(service, calendar_id, event_summary, event_start, event_end):
+    if not event_exists(service, calendar_id, event_summary):
+        event = {
+            'summary': event_summary,
+            'start': {
+                'dateTime': event_start,
+                'timeZone': 'UTC',
+            },
+            'end': {
+                'dateTime': event_end,
+                'timeZone': 'UTC',
+            },
+        }
+
+        try:
+            event = service.events().insert(calendarId=calendar_id, body=event).execute()
+            print('Zdarzenie utworzone: %s' % (event.get('htmlLink')))
+        except HttpError as e:
+            print(f'An error occurred: {e}')
+    else:
+        print('Zdarzenie już istnieje w kalendarzu.')
+def get_event_info():
+    recognizer = sr.Recognizer()
+
+    with sr.Microphone() as source:
+        print("Say something:")
+        audio = recognizer.listen(source)
+
+    try:
+        print("Podaj identyfikator kalendarza:")
+        calendar_id = input().strip()
+
+        print("Podaj podsumowanie wydarzenia:")
+        event_summary = input().strip()
+
+        print("Podaj czas rozpoczęcia wydarzenia (np. 2024-01-15T10:00:00):")
+        event_start = input().strip()
+
+        print("Podaj czas zakończenia wydarzenia (np. 2024-01-15T12:00:00):")
+        event_end = input().strip()
+
+        service = get_google_calendar_service()
+        add_event_to_calendar(service, calendar_id, event_summary, event_start, event_end)
+
+
+    except sr.UnknownValueError:
+        print("Nie udało się zrozumieć mowy.")
+    except sr.RequestError as e:
+        print(f"Błąd żądania rozpoznawania mowy: {e}")
+
+        service = get_google_calendar_service()
+        add_event_to_calendar(service, calendar_id, event_summary, event_start, event_end)
+
+    except sr.UnknownValueError:
+        print("Could not understand audio.")
+    except sr.RequestError as e:
+        print(f"Speech Recognition request failed: {e}")
+  
+
+#FUNCTION
 
 def webOpen():
-    
-    label.config(animate_text(text="Otwieram przegladarkę"))
+    process_response('już otwieram')
     webbrowser.open("https://google.com/search")
+import webbrowser
+
 def webOpenwithQuestion():
-    print("co mam sprwdzić")
-    
-    
-    test1=speech
-    
-    
-    
-    # query = entry.get()
-    label.config(animate_text(text="Oczywiście, `wyszukuję..."))
-    url = "https://www.google.com/search?q=" + test1
-    webbrowser.open(url)
-    
-#TODO DO SPRAWDZENIA
+    process_response('Co chcesz wyszukać?')
+    query = speech(sr.Recognizer())
+
+    if query:
+        search_url = f"https://google.com/search?q={query}"
+        process_response(f'Wyszukuję definicje dla: {query}')
+        webbrowser.open(search_url)
+
+        process_response(f'Czy mam przeczytać definicje dla: {query}?')
+        response = speech(sr.Recognizer())
+
+        if response and any(word in response.lower() for word in ["tak", "czytaj"]):
+            process_response(f'Oto definicje dla: {query}')
+            # Tutaj można również dodać kod do zapisania definicji do pliku tekstowego
+            with open('definicje.txt', 'a') as file:
+                file.write(f'Definicje dla {query}:\n')
+                # Dodaj kod do pobrania definicji z internetu i zapisania do pliku
+                # Przykładowy kod:
+                # file.write(f'Definicja 1: ... \n')
+                # file.write(f'Definicja 2: ... \n')
+        else:
+            process_response('OK, nie będę czytać definicji.')
+
+  
+  
+  
+ #TODO do sprawdzenia   
 def poczOpen():
     pytanie = speech()
 
@@ -108,6 +354,7 @@ def poczOpen():
     elif pytanie == "error":
         print("Błąd podczas rozpoznawania mowy")
     elif pytanie == "tak":
+        process_response('')
         label.config(animate_text="poczta")
         Take_data_to_login("gmail")
         print(Take_data_to_login)
@@ -120,13 +367,10 @@ def poczOpen():
             mail.login(email, haslo)
             mail.select("inbox")
 
-            # Get the current date and time
             today = datetime.date.today()
             
-            # Calculate 24 hours ago
             twenty_four_hours_ago = today - datetime.timedelta(days=1)
 
-            # Prepare the date format for the search
             date_format = "%d-%b-%Y"  # Format like: "01-Jan-2023"
             since_date = twenty_four_hours_ago.strftime(date_format)
 
@@ -174,55 +418,25 @@ def poczOpen():
             server.sendmail(email, odbiorca, wiadomosc)
 
         print("Wiadomość została wysłana!")
+   
+   
+   
+   
      
-#TODO dodać
 def CalOpen():
-    #TODO zmienić aby wcześniej było wybierane czy to dodanie czy przeczytanie
     print("co chcesz zrobić")
-    
     
     sp=speech
     
     
     if "co mam w kalendarzu" or "sprawdź kalendarz" in sp:
         print("już mówię")
+        creds = authenticate_google_calendar()
+        check_google_calendar(creds)
+        
     elif "dodaj do kalendrza" or "dodaj do grafiku" in sp:
         print("oczywiście")
-        
-        
-        #TODO sprawdxanie czy wolne
-        sp2=speech
-        
-        
-        if "1" in sp2:
-            print("dodano")
-        elif "2" in sp2:
-            print("termin zajęty")
-            if "dodaj to w wolnym terminie":
-                print("oczywiście")
-            else:
-                print("Niestety nie ma wolnego czasu w tym termienie")
-                print("co mam zrobić")
-                
-                
-                sp3=speech
-                
-                
-                if "sam to zrobię" in sp3:
-                    print("oczywiście")
-                elif "kiedy mam pierwszy wolny termin":
-                    print("już mówię")
-                    
-                    
-                    sp4=speech
-                    
-                    
-                    if "dodaj to w inntm terminie" in sp4:
-                        print("oczywiście")
-                else:
-                    print("przepraszam nie mogę tego zrobić")
-        else:
-            print("nie rozumiem")
+        get_event_info()
 
 def play_spotify(track_name):
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="user-modify-playback-state"))
@@ -284,46 +498,7 @@ def spoOpen():
                 play_spotify(track_to_play)
     else:
         print("Puszcze coś z listy top 100.")
-
-        
-#TODO dodać
-def storyOpen():
-    print("chesz posłuchać czegoś konkretnego?")
-    
-    sp=speech
-    
-    
-    
-    if "yes" in sp:
-        print("oczywiście ostatnio słuchałeć\n chcesz kontunułować czy coś nowego")
-        
-        
-        sp1 =speech
-        
-        
-        
-        if "kontynułuj" in sp1:
-            print("nie ma problemu")
-        else: 
-            print("mam coś wybrać?")
-            
-            sp3=speech
-            
-            
-            
-            if "tak" in sp3:
-                print("oki, jakiś konkretny gatunek?")
-                if "nie":
-                    print("już puszczam")
-                else:
-                    print ("z jakiego gatunku wybrać?")
-            else:
-                print("co mam puścić?")
-    else:
-        print ("puszczę coś z polecanych dla ciebieć")
-    label.config(animate_text(text="storytell"))
-    
-    
+       
 def transOpen():
     print("co mam przetłumaczyć")
     
@@ -334,7 +509,7 @@ def transOpen():
         webbrowser.open(url)
     elif "tak" in transQ:
         translator = Translator()
-        tekst_do_tłumaczenia = input("Podaj tekst do przetłumaczenia: ")
+        process_response("Podaj tekst do przetłumaczenia")
         try:
             translation = translator.translate(tekst_do_tłumaczenia, src='pl', dest='en')
             print("Oryginalny tekst (Polish):", tekst_do_tłumaczenia)
@@ -351,7 +526,7 @@ def addto():
     
     
     
-    label.config(animate_text(text="dodanie"))
+    label.config(text="dodanie")
 def weather():
     print("gdzie mam sprawdzić pogode")
     
@@ -370,12 +545,11 @@ def weather():
     else:
         print('Nie udało się pobrać danych pogodowych.')
         
-
+#Pierwsze uruchomienie/formularz
 def run_on_first_start():
-    if not os.path.isfile("form_data.json"):
-        with open("form_data.json", "w") as file:
+    if not os.path.isfile("Dane.json"):
+        with open("Dane.json", "w") as file:
             create_form()
-
 def create_form():
     def submit_form():
         name = entry_name.get()
@@ -401,10 +575,11 @@ def create_form():
             ]
         }
 
-        with open("form_data.json", "w") as file:
+        with open("Dane.json", "w") as file:
             json.dump(data, file, indent=4)
-            print("Data saved to form_data.json")
+            print("Data saved to dane.json")    
         root.destroy()
+        process_file('Dane.json', 'Password', mode='encrypt') 
 
     root = tk.Tk()
     root.title("Multiple Forms")
@@ -461,23 +636,4 @@ def create_form():
     submit_button.grid(row=4, columnspan=2, padx=10, pady=10)
 
     root.mainloop()
-
 run_on_first_start()
-
-#TODO zamiienić na okno w stylu kalwisza windows // klasy pwiadomienia 
-root = tk.Tk()
-root.title("Okno z Przyciskiem")
-root.geometry("400x300")
-
-label = tk.Label(root, text="", font=("Arial", 16))
-label.pack(pady=20)
-
-entry = tk.Entry(root)
-entry.pack(pady=10)
-button = tk.Button(root, text="Wykonaj akcję", command=action)
-button.pack(pady=10)
-
-text_to_animate = "Witaj w moim pierwszym oknie!"
-
-root.after(1000, lambda: animate_text(text_to_animate))
-root.mainloop()
