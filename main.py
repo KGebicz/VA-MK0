@@ -206,23 +206,15 @@ def authenticate_and_build_service():
     except HttpError as error:
         print(f"An error occurred: {error}")
         return None
-def authenticate_and_fetch_emails(service, query="", hours_limit=6):
+def authenticate_and_fetch_emails(service, query=""):
     try:
-        # Ustawienie daty 6 godzin wstecz
-        hours_ago = (datetime.utcnow() - timedelta(hours=hours_limit)).isoformat()
-
-        # Dodanie warunku "after:" do zapytania
-        if query:
-            query += f" after:{hours_ago}"
-        else:
-            query = f"after:{hours_ago}"
-
         results = service.users().messages().list(userId="me", q=query).execute()
         messages = results.get("messages", [])
         return messages
     except HttpError as error:
         print(f"An error occurred: {error}")
         return []
+
 def authenticate_and_build_service2():
     creds = None
     if os.path.exists("token2.json"):
@@ -481,28 +473,29 @@ def CalOpen():
                     process_response_cal(start_date.strftime("%Y-%m-%d"), event["summary"])
     except HttpError as error:
         print(f"An error occurred: {error}")            
-def MailOpen(hours_limit=6):
+def MailOpen():
     query = "in:important"
 
     try:
         service = authenticate_and_build_service()
         if service:
-            emails = authenticate_and_fetch_emails(service, query, hours_limit)
+            emails = authenticate_and_fetch_emails(service, query)
 
             if emails:
-                speak(f"Oto tytuły maili z ostatnich {hours_limit} godzin w folderze 'Important':")
-                for i, email in enumerate(emails[:10], start=1):
+                speak("Oto tytuły ostatnich 3 maili w folderze 'Important':")
+                for i, email in enumerate(emails[:3], start=1):
                     email_id = email['id']
                     email_data = service.users().messages().get(userId="me", id=email_id).execute()
                     subject = next(header['value'] for header in email_data['payload']['headers'] if header['name'] == 'Subject')
-                    speak(f"Tytuł maila {i} o ID {email_id}: {subject}")
+                    speak(f"Tytuł maila {i}: {subject}")
             else:
-                speak(f"Brak maili z ostatnich {hours_limit} godzin w folderze 'Important'.")
+                speak("Brak maili w folderze 'Important'.")
         else:
             speak("Wystąpił błąd podczas uwierzytelniania usługi Gmail.")
     except Exception as e:
         print(f"Wystąpił błąd podczas pobierania maili: {e}")
         speak("Wystąpił błąd podczas pobierania maili.")
+
 def send_email_command():
     process_response("podaj maila")
     mail = speech(sr.Recognizer())
