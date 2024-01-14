@@ -24,12 +24,14 @@ import googleapiclient.discovery
 from googleapiclient.discovery import build
 import os.path
 from googleapiclient.errors import HttpError
+from email.mime.text import MIMEText
+import base64
+from datetime import datetime, timedelta
+import threading
 
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-API_KEY = 'YOUR_API_KEY'
-CLIENT_SECRET_FILE = 'path/to/client_secret.json'
-   
+
+
 #CORE
 def speak(text):
     engine = pyttsx3.init()
@@ -149,79 +151,231 @@ def process_file(file_path, password, mode='encrypt'):
 
     else:
         print("Invalid mode. Please use 'encrypt' or 'decrypt'.")
-
+def process_response_cal(start, summary):
+    speak(f"{start} - {summary}")
 #Started
 def action():
     process_response('co chcesz zrobić?')
     fraze = speech(sr.Recognizer())
-
     if fraze:
-        if any(word in fraze for word in ["przeglądarka", "otwórz stronę", "odpal stronę"]):
-            webOpen()
-        elif any(word in fraze for word in ["wyszukaj", "poszukaj", "sprawdź", "check"]):
-            webOpenwithQuestion()
-        elif any(word in fraze for word in ["poczta", "mail"]):
-            poczOpen()
-        elif any(word in fraze for word in ["kalendarz", "calendary"]):
-            CalOpen()
-        elif any(word in fraze for word in ["spotyfi", "muzyka", "music"]):
-            spoOpen()
-        elif any(word in fraze for word in ["tłumacz", "translate"]):
-            transOpen()
-        elif any(word in fraze for word in ["dodaj", "add to"]):
-            addto()
-        elif any(word in fraze for word in ["pogoda", "weather"]):
-            weather()
-        else:
-            print("roport")
+            if any(word in fraze for word in ["przeglądarka", "otwórz stronę", "odpal stronę"]):
+                webOpen()
+            elif any(word in fraze for word in ["wyszukaj", "poszukaj", "sprawdź", "check"]):
+                webOpenwithQuestion()
+            elif any(word in fraze for word in ["poczta", "mail"]):
+                process_response("chcesz sprawdzić czy wysłać")
+                wyb=speech(sr.Recognizer())
+                if any(word in wyb for word in ["sprawdź", "sprawdze", "check"]):
+                    MailOpen()
+                elif any(word in wyb for word in ["wyśle", "wysli", "wysłać"]):
+                    send_email_command()  
+                else:
+                    process_response("nie rozumiem")
+            elif any(word in fraze for word in ["kalendarz", "calendary", "włącz kalendarz"]):
+                process_response("chcesz sprawdzić czy dodać")
+                wyb1=speech(sr.Recognizer())
+                if any(word in wyb1 for word in ["sprawdź", "sprawdze", "check"]):
+                    CalOpen()
+                elif any(word in wyb1 for word in ["dodaj", "zaplanuj spotkanie", "zaplanuj"]):
+                    add_cal()
+                else:
+                    process_response("nie rozumiem")
+            elif any(word in fraze for word in ["tłumacz", "translate"]):
+                transOpen()
+            elif any(word in fraze for word in ["dodaj", "add to","wyślij raport","raport"]):
+                toReport()
+            elif any(word in fraze for word in ["pogoda", "weather"]):
+                weather()
+            
+        
 
 
 
 
 #TO FUNCTION
-def authenticate_google_calendar():
+SCOPES1 = ["https://www.googleapis.com/auth/gmail.readonly"]
+def authenticate_and_build_service():
     creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json')
-
+    if os.path.exists("token1.json"):
+        creds = Credentials.from_authorized_user_file("token1.json", SCOPES1)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json", SCOPES1
+            )
             creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
+        with open("token1.json", "w") as token:
             token.write(creds.to_json())
+    try:
+        service = build("gmail", "v1", credentials=creds)
+        return service
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+        return None
+def authenticate_and_fetch_emails(service, query="", hours_limit=6):
+    try:
+        # Ustawienie daty 6 godzin wstecz
+        hours_ago = (datetime.utcnow() - timedelta(hours=hours_limit)).isoformat()
 
-    return creds
-def check_google_calendar(creds):
-    service = googleapiclient.discovery.build('calendar', 'v3', credentials=creds)
+        # Dodanie warunku "after:" do zapytania
+        if query:
+            query += f" after:{hours_ago}"
+        else:
+            query = f"after:{hours_ago}"
 
-    now = datetime.datetime.utcnow().isoformat() + 'Z'
-    events_result = service.events().list(
-        calendarId='primary',
-        timeMin=now,
-        maxResults=10,
-        singleEvents=True,
-        orderBy='startTime'
-    ).execute()
-
-    events = events_result.get('items', [])
-
-    if not events:
-        print('No upcoming events found.')
-    else:
-        print('Upcoming events:')
-        for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
-            print(f'{start} - {event["summary"]}')
-
-def get_google_calendar_service():
+        results = service.users().messages().list(userId="me", q=query).execute()
+        messages = results.get("messages", [])
+        return messages
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+        return []
+def authenticate_and_build_service2():
     creds = None
+    if os.path.exists("token2.json"):
+        creds = Credentials.from_authorized_user_file("token2.json", SCOPES1)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json", SCOPES1
+            )
+            creds = flow.run_local_server(port=0)
+        with open("token2.json", "w") as token:
+            token.write(creds.to_json())
+    try:
+        service = build("gmail", "v1", credentials=creds)
+        return service
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+        return None
+def send_email(service, to, subject, body):
+    try:
+        message = create_message("me", to, subject, body)
+        send_message(service, "me", message)
+        print("Wysłano e-mail pomyślnie.")
+    except Exception as e:
+        print(f"Wystąpił błąd podczas wysyłania e-maila: {e}")
+def create_message(sender, to, subject, body):
+    message = MIMEText(body)
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+    return {'raw': raw}
+def send_message(service, user_id, message):
+    try:
+        service.users().messages().send(userId=user_id, body=message).execute()
+    except HttpError as error:
+        print(f"An error occurred while sending the message: {error}")
+CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
+def authenticate_and_build_calendar_service():
+    creds = None
+    if os.path.exists("token_calendar.json"):
+        creds = Credentials.from_authorized_user_file("token_calendar.json", CALENDAR_SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json", CALENDAR_SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+        with open("token_calendar.json", "w") as token:
+            token.write(creds.to_json())
+    try:
+        service = build("calendar", "v3", credentials=creds)
+        return service
+    except Exception as error:
+        print(f"An error occurred: {error}")
+        return None
+def add_event_to_calendar(calendar_service, summary, start_time, end_time):
+    try:
+        event = {
+            'summary': summary,
+            'start': {
+                'dateTime': start_time,
+                'timeZone': 'Europe/Warsaw',  # Change to your time zone
+            },
+            'end': {
+                'dateTime': end_time,
+                'timeZone': 'Europe/Warsaw',  # Change to your time zone
+            },
+        }
 
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json')
+        created_event = calendar_service.events().insert(calendarId='primary', body=event).execute()
+        print(f'Event created: {created_event.get("htmlLink")}')
+    except HttpError as error:
+        print(f"An error occurred: {error}")
+def get_month_number(month_name):
+    months_mapping = {
+        "styczeń": "01",
+        "luty": "02",
+        "marzec": "03",
+        "kwiecień": "04",
+        "maj": "05",
+        "czerwiec": "06",
+        "lipiec": "07",
+        "sierpień": "08",
+        "wrzesień": "09",
+        "październik": "10",
+        "listopad": "11",
+        "grudzień": "12",
+    }
 
+    # Check if the input is already a number
+    if month_name.isdigit() and 1 <= int(month_name) <= 12:
+        return f"{int(month_name):02}"
+
+    # Convert spoken representation to number
+    result = months_mapping.get(month_name.lower(), None)
+
+    if result:
+        return result
+    else:
+        print("Błąd: Nieprawidłowy miesiąc. Spróbuj ponownie.")
+        return None
+def is_event_conflict(calendar_service, start_time, end_time):
+    try:
+        events_result = calendar_service.events().list(
+            calendarId='primary',
+            timeMin=start_time,
+            timeMax=end_time,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+
+        events = events_result.get('items', [])
+
+        return len(events) > 0
+
+    except Exception as error:
+        print(f"An error occurred while checking for conflicts: {error}")
+        return True
+def create_message(sender, to, subject, body):
+    message = MIMEText(body)
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+    return {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
+def send_message(service, user_id, message):
+    try:
+        message = service.users().messages().send(userId=user_id, body=message).execute()
+        print('Message Id: %s' % message['id'])
+        return message
+    except HttpError as error:
+        print(f'An error occurred: {error}')
+def setup_gmail_api():
+    SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+    creds = None
+    # The file token3.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token3.json'):
+        creds = Credentials.from_authorized_user_file('token3.json')
+    # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -229,95 +383,22 @@ def get_google_calendar_service():
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-
-        with open('token.json', 'w') as token:
+        # Save the credentials for the next run
+        with open('token3.json', 'w') as token:
             token.write(creds.to_json())
-
-    service = build('calendar', 'v3', credentials=creds)
-    return service
-def event_exists(service, calendar_id, event_summary):
-    try:
-        events_result = service.events().list(
-            calendarId=calendar_id, timeMin=datetime.datetime.utcnow().isoformat() + 'Z',
-            maxResults=10, singleEvents=True, orderBy='startTime'
-        ).execute()
-        events = events_result.get('items', [])
-
-        for event in events:
-            if 'summary' in event and event['summary'] == event_summary:
-                return True
-
-        return False
-
-    except HttpError as e:
-        print(f'An error occurred: {e}')
-        return False
-def add_event_to_calendar(service, calendar_id, event_summary, event_start, event_end):
-    if not event_exists(service, calendar_id, event_summary):
-        event = {
-            'summary': event_summary,
-            'start': {
-                'dateTime': event_start,
-                'timeZone': 'UTC',
-            },
-            'end': {
-                'dateTime': event_end,
-                'timeZone': 'UTC',
-            },
-        }
-
-        try:
-            event = service.events().insert(calendarId=calendar_id, body=event).execute()
-            print('Zdarzenie utworzone: %s' % (event.get('htmlLink')))
-        except HttpError as e:
-            print(f'An error occurred: {e}')
-    else:
-        print('Zdarzenie już istnieje w kalendarzu.')
-def get_event_info():
-    recognizer = sr.Recognizer()
-
-    with sr.Microphone() as source:
-        print("Say something:")
-        audio = recognizer.listen(source)
-
-    try:
-        print("Podaj identyfikator kalendarza:")
-        calendar_id = input().strip()
-
-        print("Podaj podsumowanie wydarzenia:")
-        event_summary = input().strip()
-
-        print("Podaj czas rozpoczęcia wydarzenia (np. 2024-01-15T10:00:00):")
-        event_start = input().strip()
-
-        print("Podaj czas zakończenia wydarzenia (np. 2024-01-15T12:00:00):")
-        event_end = input().strip()
-
-        service = get_google_calendar_service()
-        add_event_to_calendar(service, calendar_id, event_summary, event_start, event_end)
+    return build('gmail', 'v1', credentials=creds)
+def send_report_email(service, recipient_email, subject, body):
+    message = create_message(sender='email', to=recipient_email, subject=subject, body=body)
+    send_message(service, 'me', message)
 
 
-    except sr.UnknownValueError:
-        print("Nie udało się zrozumieć mowy.")
-    except sr.RequestError as e:
-        print(f"Błąd żądania rozpoznawania mowy: {e}")
 
-        service = get_google_calendar_service()
-        add_event_to_calendar(service, calendar_id, event_summary, event_start, event_end)
 
-    except sr.UnknownValueError:
-        print("Could not understand audio.")
-    except sr.RequestError as e:
-        print(f"Speech Recognition request failed: {e}")
-  
-
-#FUNCTION
+#FUNCTIONs
 
 def webOpen():
     process_response('już otwieram')
     webbrowser.open("https://google.com/search")
-import webbrowser
-
 def webOpenwithQuestion():
     process_response('Co chcesz wyszukać?')
     query = speech(sr.Recognizer())
@@ -326,226 +407,214 @@ def webOpenwithQuestion():
         search_url = f"https://google.com/search?q={query}"
         process_response(f'Wyszukuję definicje dla: {query}')
         webbrowser.open(search_url)
-
-        process_response(f'Czy mam przeczytać definicje dla: {query}?')
-        response = speech(sr.Recognizer())
-
-        if response and any(word in response.lower() for word in ["tak", "czytaj"]):
-            process_response(f'Oto definicje dla: {query}')
-            # Tutaj można również dodać kod do zapisania definicji do pliku tekstowego
-            with open('definicje.txt', 'a') as file:
-                file.write(f'Definicje dla {query}:\n')
-                # Dodaj kod do pobrania definicji z internetu i zapisania do pliku
-                # Przykładowy kod:
-                # file.write(f'Definicja 1: ... \n')
-                # file.write(f'Definicja 2: ... \n')
-        else:
-            process_response('OK, nie będę czytać definicji.')
-
-  
-  
-  
- #TODO do sprawdzenia   
-def poczOpen():
-    pytanie = speech()
-
-    if pytanie == "unknown":
-        print("Nie można zrozumieć mowy")
-    elif pytanie == "error":
-        print("Błąd podczas rozpoznawania mowy")
-    elif pytanie == "tak":
-        process_response('')
-        label.config(animate_text="poczta")
-        Take_data_to_login("gmail")
-        print(Take_data_to_login)
-        #TODOD pobieranie danycb z json  i wpisuwanie 
-        email = "kpgebicz11@gmail.com"
-        haslo = "KGP#12Q4rp_1"
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-
-        try:
-            mail.login(email, haslo)
-            mail.select("inbox")
-
-            today = datetime.date.today()
-            
-            twenty_four_hours_ago = today - datetime.timedelta(days=1)
-
-            date_format = "%d-%b-%Y"  # Format like: "01-Jan-2023"
-            since_date = twenty_four_hours_ago.strftime(date_format)
-
-            # Construct the search query
-            search_query = f'(SINCE "{since_date}")'
-
-            # Search for emails within the last 24 hours
-            result, data = mail.uid("search", None, search_query)
-            if result == "OK":
-                numery_maili = data[0].split()
-                for i in numery_maili:
-                    result, message_data = mail.uid("fetch", i, "(RFC822)")
-                    if result == "OK":
-                        raw_email = message_data[0][1]
-                        print(raw_email.decode("utf-8"))
-
-        except Exception as e:
-            print("Wystąpił błąd:", e)
-        finally:
-            mail.logout()
-    elif pytanie =="nie":
-        email = "kpgebicz11@gmail.com"
-        haslo = "KGP#12Q4rp_1"
-
-        print ("do kogo wysłać")
-        
-        odbiorca=speech
-        
-        print("jaki mam wpisac temat")
-        
-        temat = speech
-        
-        print("podaj treść wiadomości")
-        
-        tresc=speech
-        
-        
-        
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-            server.login(email, haslo)
-
-            wiadomosc = f"Subject: {temat}\n\n{tresc}"
-
-            server.sendmail(email, odbiorca, wiadomosc)
-
-        print("Wiadomość została wysłana!")
-   
-   
-   
-   
-     
-def CalOpen():
-    print("co chcesz zrobić")
-    
-    sp=speech
-    
-    
-    if "co mam w kalendarzu" or "sprawdź kalendarz" in sp:
-        print("już mówię")
-        creds = authenticate_google_calendar()
-        check_google_calendar(creds)
-        
-    elif "dodaj do kalendrza" or "dodaj do grafiku" in sp:
-        print("oczywiście")
-        get_event_info()
-
-def play_spotify(track_name):
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="user-modify-playback-state"))
-
-    results = sp.search(q=track_name, limit=1)
-    if results['tracks']['items']:
-        track_uri = results['tracks']['items'][0]['uri']
-        sp.start_playback(uris=[track_uri])
-        print(f"Odtwarzam {track_name} na Spotify.")
-    else:
-        print(f"Nie znaleziono utworu o nazwie {track_name}.")
-
-def play_last_playlist():
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="user-read-recently-played"))
-
-    last_tracks = sp.current_user_recently_played(limit=1)
-
-    if last_tracks and 'items' in last_tracks and last_tracks['items']:
-        last_track = last_tracks['items'][0]
-        playlist_id = last_track['context']['uri']
-
-        sp.start_playback(context_uri=playlist_id)
-        print("Odtwarzam ostatnią playlistę na Spotify.")
-    else:
-        print("Nie znaleziono ostatnio odtwarzanej playlisty.")
-
-def spoOpen():
-    label.config(animate_text="wyszukać konkretnej")
-    print("Czy chcesz posłuchać czegoś konkretnego?")
-
-    sp = speech()
-
-    if "tak" in sp:
-        print("Oczywiście, ostatnio słuchałeś. Chcesz kontynuować czy coś nowego?")
-
-        sp1 = speech()
-
-        if "kontynuuj" in sp1:
-            play_last_playlist()
-            print("Nie ma problemu, kontynuujemy.")
-        else:
-            print("Czy mam coś wybrać?")
-
-            sp3 = speech()
-
-            if "tak" in sp3:
-                print("Oki, jakiś konkretny gatunek?")
-                gat = speech()
-                if "nie" in gat:
-                    print("Już puszczałem.")
-                    # play_random_top_100()
-                else:
-                    #TODO pobiera z speechrecognition gatuenk w jakim ma polecieć piosenka
-                    print("Z jakiego gatunku mam wybrać?")
-                    gatunek=speech
-            else:
-                print("Co mam puścić?")
-                track_to_play = speech
-                play_spotify(track_to_play)
-    else:
-        print("Puszcze coś z listy top 100.")
-       
 def transOpen():
-    print("co mam przetłumaczyć")
-    
-    transQ=speech
-    
-    if "nie" in transQ:
+    process_response("Czy chcesz coś przetłumaczyć za pomocą głosu?")
+
+    transQ = speech(sr.Recognizer())
+    if transQ == "tak":
+        process_response("Podaj tekst do przetłumaczenia")
+
+        tekst_do_tłumaczenia = speech(sr.Recognizer())
+
+        if tekst_do_tłumaczenia:
+            translator = Translator()
+            try:
+                translation = translator.translate(tekst_do_tłumaczenia, src='pl', dest='en')
+                print("Oryginalny tekst (Polish):", tekst_do_tłumaczenia)
+                print("Tłumaczenie (English):", translation.text)
+                process_response(translation.text)
+            except Exception as e:
+                print("Błąd podczas tłumaczenia:", str(e))
+    elif transQ == "nie":
         url = 'https://translate.google.com/'
         webbrowser.open(url)
-    elif "tak" in transQ:
-        translator = Translator()
-        process_response("Podaj tekst do przetłumaczenia")
-        try:
-            translation = translator.translate(tekst_do_tłumaczenia, src='pl', dest='en')
-            print("Oryginalny tekst (Polish):", tekst_do_tłumaczenia)
-            print("Tłumaczenie (English):", translation.text)
-        except Exception as e:
-            print("Błąd podczas tłumaczenia:", str(e))
-def addto():
-    
-    print("jaki wysłać komentarz")
-    
-    
-    
-    kom=speech
-    
-    
-    
-    label.config(text="dodanie")
+    else:
+        process_response("nie zrozumiałem czekam na kolejne polecenia")
 def weather():
-    print("gdzie mam sprawdzić pogode")
-    
-    
-    location=speech
-    
-    
-    # location = pytanie.get()
-    url = f'https://wttr.in/{location}?format=%C+%t+%w'
-    response = requests.get(url)
+    process_response('Podaj lokalizację do sprawdzenia pogody')
+    lokalizacja = speech(sr.Recognizer())
+    print(f"Sprawdzam pogodę w {lokalizacja}...")
 
-    if response.status_code == 200:
-        data = response.text
-        print(f'Pogoda w {location}:')
-        print(data)
+    url = f'https://wttr.in/{lokalizacja}?format=%C+%t+%w'
+    odpowiedz = requests.get(url)
+
+    if odpowiedz.status_code == 200:
+        dane = odpowiedz.text
+        print(f'Pogoda w {lokalizacja}:')
+        print(dane)
+
+        # Odczytujemy dane pogodowe odpowiedzią głosową
+        process_response(f'Pogoda w {lokalizacja}: {dane}')
     else:
         print('Nie udało się pobrać danych pogodowych.')
-        
-#Pierwsze uruchomienie/formularz
+        process_response('Nie udało się pobrać danych pogodowych.')
+SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+def CalOpen():
+    creds = None
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json", SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
+
+    try:
+        process_response("sprawdzić kalendarz czy dodać zdarzenie?")
+        fraze = speech(sr.Recognizer())
+        if fraze:
+            if any(word in fraze for word in ["sprawdź", "podaj"]):
+
+                service = build("calendar", "v3", credentials=creds)
+                now = datetime.utcnow().isoformat() + "Z"  # 'Z' indicates UTC time
+                events_result = (
+                    service.events()
+                    .list(
+                        calendarId="primary",
+                        timeMin=now,
+                        maxResults=10,
+                        singleEvents=True,
+                        orderBy="startTime",
+                    )
+                    .execute()
+                )
+                events = events_result.get("items", [])
+
+                for event in events:
+                    start = event["start"].get("dateTime", event["start"].get("date"))
+                    # Parsuj datę i czas, a następnie wybierz tylko datę
+                    start_date = datetime.strptime(start, "%Y-%m-%dT%H:%M:%S%z")
+                    process_response_cal(start_date.strftime("%Y-%m-%d"), event["summary"])
+    except HttpError as error:
+        print(f"An error occurred: {error}")            
+def MailOpen(hours_limit=6):
+    query = "in:important"
+
+    try:
+        service = authenticate_and_build_service()
+        if service:
+            emails = authenticate_and_fetch_emails(service, query, hours_limit)
+
+            if emails:
+                speak(f"Oto tytuły maili z ostatnich {hours_limit} godzin w folderze 'Important':")
+                for i, email in enumerate(emails[:10], start=1):
+                    email_id = email['id']
+                    email_data = service.users().messages().get(userId="me", id=email_id).execute()
+                    subject = next(header['value'] for header in email_data['payload']['headers'] if header['name'] == 'Subject')
+                    speak(f"Tytuł maila {i} o ID {email_id}: {subject}")
+            else:
+                speak(f"Brak maili z ostatnich {hours_limit} godzin w folderze 'Important'.")
+        else:
+            speak("Wystąpił błąd podczas uwierzytelniania usługi Gmail.")
+    except Exception as e:
+        print(f"Wystąpił błąd podczas pobierania maili: {e}")
+        speak("Wystąpił błąd podczas pobierania maili.")
+def send_email_command():
+    process_response("podaj maila")
+    mail = speech(sr.Recognizer())
+    to_address = "kgebicz11@gmail.com"
+    process_response("podaj temat")
+    tem = speech(sr.Recognizer())
+    subject = "testowy"
+    
+    speak("Prosze powiedz treść e-maila.")
+    body = speech(sr.Recognizer())
+
+    if body:
+        try:
+            service = authenticate_and_build_service2()
+            if service:
+                send_email(service, to_address, subject, body)
+            else:
+                speak("Wystąpił błąd podczas uwierzytelniania usługi Gmail.")
+        except Exception as e:
+            print(f"Wystąpił błąd: {e}")
+            speak("Wystąpił błąd podczas wysyłania e-maila.")
+def add_cal():
+    calendar_service = authenticate_and_build_calendar_service()
+
+    if calendar_service:
+        # Poproś użytkownika o podanie informacji
+        process_response("Podaj nazwę spotkania")
+        summary = speech(sr.Recognizer())
+
+        process_response("Podaj miesiąc w którym będzie spotkanie")
+        start_month_date = speech(sr.Recognizer())
+        start_month_number = get_month_number(start_month_date)
+
+        if start_month_number:
+            process_response("Podaj dzień w którym będzie spotkanie")
+            start_day_date = speech(sr.Recognizer())
+
+            process_response("Podaj czas rozpoczęcia spotkania godzina, minuta")
+            start_time = speech(sr.Recognizer())
+
+            process_response("Podaj czas spotkania w minutach")
+            duration_str = speech(sr.Recognizer())
+
+            start_date = f"{start_month_number}-{start_day_date}"
+
+            try:
+                start_datetime_str = f"{datetime.now().year}-{start_date} {start_time}:00"
+                start_datetime = datetime.strptime(start_datetime_str, "%Y-%m-%d %H:%M:%S")
+                end_time = start_datetime + timedelta(minutes=int(duration_str))
+
+                start_time_iso = start_datetime.isoformat()
+                end_time_iso = end_time.isoformat()
+
+                # Sprawdź konflikty przed dodaniem spotkania
+                if not is_event_conflict(calendar_service, start_time_iso, end_time_iso):
+                    add_event_to_calendar(calendar_service, summary, start_time_iso, end_time_iso)
+                else:
+                    process_response("Konflikt: Spotkanie w tym czasie już istnieje.")
+            except ValueError:
+                print("Błąd: Nieprawidłowy format daty i czasu. Upewnij się, że używasz poprawnego formatu.")
+        else:
+            print("Błędny miesiąc. Spróbuj ponownie.")
+def toReport(service):
+    process_response('Proszę podać treść maila.')
+    treść_maila = speech(sr.Recognizer())
+
+    if treść_maila:
+        send_report_email(service, 'kgebicz11@gmail.com', 'RAPORT', treść_maila)
+
+
+
+#autoryzacja
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/calendar.readonly"]
+CLIENT_SECRET_FILE = "credentials.json"  # Plik JSON pobrany z Konsoli Programisty Google
+TOKEN_FILE = "token.json"
+def authenticate_with_password(username, password):
+    flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+
+    credentials = Credentials.from_authorized_user_info(
+        client_id=flow.client_config["client_id"],
+        client_secret=flow.client_config["client_secret"],
+        scopes=SCOPES,
+    )
+
+    # Uzyskanie tokenu dostępu za pomocą loginu i hasła
+    credentials.fetch_token(
+        "https://oauth2.googleapis.com/token",
+        authorization_response=None,
+        username=username,
+        password=password,
+    )
+
+    # Zapisz uzyskane poświadczenia do pliku
+    credentials.to_json_file(TOKEN_FILE)
+
+    # Zbuduj i zwróć obiekt usługi Gmail z uwierzytelnionymi danymi
+    service = build("gmail", "v1", credentials=credentials)
+    return service
+
+
+#Formularz
 def run_on_first_start():
     if not os.path.isfile("Dane.json"):
         with open("Dane.json", "w") as file:
@@ -636,4 +705,10 @@ def create_form():
     submit_button.grid(row=4, columnspan=2, padx=10, pady=10)
 
     root.mainloop()
+    authenticate_with_password("123","123")
 run_on_first_start()
+
+
+
+thread = threading.Thread(target=Speech_Start_Stop)
+thread.start()
