@@ -1,17 +1,11 @@
 import datetime, time
-import tkinter as tk
-import json
 import webbrowser
 import os
 import requests
 from googletrans import Translator
-import imaplib
 from email.header import decode_header
-import smtplib
-import ssl
 import speech_recognition as sr
 import pyttsx3
-import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
@@ -28,6 +22,9 @@ from email.mime.text import MIMEText
 import base64
 from datetime import datetime, timedelta
 import threading
+import tkinter as tk
+from tkinter import ttk
+import json
 
 
 
@@ -75,7 +72,7 @@ def Speech_Start_Stop():
                     print("Wykryto wypowiedź 'cześć'. Uruchamiam odpowiednią akcję.")
                     action()
 
-                PanicWords = ["stop zero jeden", "stop 01"]
+                PanicWords = ["stop zero jeden", "stop 01","top 01"]
                 # Sprawdzamy, czy wypowiedziano którekolwiek z słów kluczowych z PanicWords
                 if any(word in MyText for word in PanicWords):
                     print("Wykryto wypowiedź z listy słów kluczowych. Zatrzymuję program.")
@@ -187,11 +184,6 @@ def action():
             elif any(word in fraze for word in ["pogoda", "weather"]):
                 weather()
             
-        
-
-
-
-
 #TO FUNCTION
 SCOPES1 = ["https://www.googleapis.com/auth/gmail.readonly"]
 def authenticate_and_build_service():
@@ -390,9 +382,6 @@ def setup_gmail_api():
 def send_report_email(service, recipient_email, subject, body):
     message = create_message(sender='email', to=recipient_email, subject=subject, body=body)
     send_message(service, 'me', message)
-
-
-
 
 #FUNCTIONs
 
@@ -623,43 +612,35 @@ def create_form():
     def submit_form():
         name = entry_name.get()
         email1 = entry_email1.get()
-        password1 = entry_password1.get()  
-        email2 = entry_email2.get()
-        password2 = entry_password2.get()
-        email3 = entry_email3.get()
-        password3 = entry_password3.get()
+        password1 = entry_password1.get()
 
         data = {
             "Name": name,
             "Forms": [
                 {"Name": "Email & Password", "Entries": [
                     {"Email": email1, "Password": password1}
-                ]},
-                {"Name": "Spotyfi", "Entries": [
-                    {"Email": email2, "Password": password2}
-                ]},
-                {"Name": "Storytell", "Entries": [
-                    {"Email": email3, "Password": password3}
                 ]}
-            ]
+            ],
+            "Greetings": greeting_var.get(),
+            "TimePeriod": time_period_var.get()
         }
 
         with open("Dane.json", "w") as file:
             json.dump(data, file, indent=4)
-            print("Data saved to dane.json")    
+            print("Dane zapisane do dane.json")
         root.destroy()
-        process_file('Dane.json', 'Password', mode='encrypt') 
+        process_file('Dane.json', 'Password', mode='encrypt')
 
     root = tk.Tk()
     root.title("Multiple Forms")
 
-# Create labels and entries for name
-    label_name = tk.Label(root, text="Name:")
+    # Tworzenie etykiet i pól do wprowadzania imienia
+    label_name = tk.Label(root, text="Imię:")
     label_name.grid(row=0, column=0, padx=10, pady=5)
     entry_name = tk.Entry(root)
     entry_name.grid(row=0, column=1, padx=10, pady=5)
 
-    # Email & Password frame
+    # Ramka dla Email & Password
     frame_email_password = tk.LabelFrame(root, text="Email & Password")
     frame_email_password.grid(row=1, columnspan=2, padx=10, pady=5)
 
@@ -668,41 +649,31 @@ def create_form():
     entry_email1 = tk.Entry(frame_email_password)
     entry_email1.grid(row=0, column=1, padx=10, pady=5)
 
-    label_password1 = tk.Label(frame_email_password, text="Password:")
+    label_password1 = tk.Label(frame_email_password, text="Hasło:")
     label_password1.grid(row=1, column=0, padx=10, pady=5)
     entry_password1 = tk.Entry(frame_email_password, show="*")
     entry_password1.grid(row=1, column=1, padx=10, pady=5)
 
-    # Spotyfi frame
-    frame_spotyfi = tk.LabelFrame(root, text="Spotyfi")
-    frame_spotyfi.grid(row=2, columnspan=2, padx=10, pady=5)
+    # Przyciski wyboru i pole dla okresu czasu
+    label_greetings = tk.Label(root, text="Pozdrowienia:")
+    label_greetings.grid(row=2, column=0, padx=10, pady=5)
+    greeting_var = tk.StringVar()
+    select_button_hello = ttk.Checkbutton(root, text="Cześć", variable=greeting_var, onvalue="Cześć")
+    select_button_hello.grid(row=2, column=1, padx=10, pady=5)
+    select_button_hi = ttk.Checkbutton(root, text="Hej", variable=greeting_var, onvalue="Hej")
+    select_button_hi.grid(row=2, column=2, padx=10, pady=5)
+    select_button_bye = ttk.Checkbutton(root, text="Pa", variable=greeting_var, onvalue="Pa")
+    select_button_bye.grid(row=2, column=3, padx=10, pady=5)
 
-    label_email2 = tk.Label(frame_spotyfi, text="Email:")
-    label_email2.grid(row=0, column=0, padx=10, pady=5)
-    entry_email2 = tk.Entry(frame_spotyfi)
-    entry_email2.grid(row=0, column=1, padx=10, pady=5)
+    label_time_period = tk.Label(root, text="Okres sprawdzania maili (w godzinach):")
+    label_time_period.grid(row=3, column=0, padx=10, pady=5)
+    time_period_var = tk.StringVar()
+    time_period_entry = tk.Entry(root, textvariable=time_period_var)
+    time_period_entry.grid(row=3, column=1, padx=10, pady=5)
 
-    label_password2 = tk.Label(frame_spotyfi, text="Password:")
-    label_password2.grid(row=1, column=0, padx=10, pady=5)
-    entry_password2 = tk.Entry(frame_spotyfi, show="*")
-    entry_password2.grid(row=1, column=1, padx=10, pady=5)
-
-    # Storytell frame
-    frame_storytell = tk.LabelFrame(root, text="Storytell")
-    frame_storytell.grid(row=3, columnspan=2, padx=10, pady=5)
-
-    label_email3 = tk.Label(frame_storytell, text="Email:")
-    label_email3.grid(row=0, column=0, padx=10, pady=5)
-    entry_email3 = tk.Entry(frame_storytell)
-    entry_email3.grid(row=0, column=1, padx=10, pady=5)
-
-    label_password3 = tk.Label(frame_storytell, text="Password:")
-    label_password3.grid(row=1, column=0, padx=10, pady=5)
-    entry_password3 = tk.Entry(frame_storytell, show="*")
-    entry_password3.grid(row=1, column=1, padx=10, pady=5)
-
-    submit_button = tk.Button(root, text="Submit", command=submit_form)
-    submit_button.grid(row=4, columnspan=2, padx=10, pady=10)
+    # Przycisk do przesyłania
+    submit_button = tk.Button(root, text="Prześlij", command=submit_form)
+    submit_button.grid(row=4, column=0, columnspan=2, pady=10)
 
     root.mainloop()
     authenticate_with_password("123","123")
