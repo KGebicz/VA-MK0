@@ -87,13 +87,10 @@ def Speech_Start_Stop():
     r = sr.Recognizer()
     config_data = get_config_from_json()
     
-    # Print the entire content of the config_data for debugging
     print("Config data:", config_data)
     
-    # Use the provided activation_word or get it from the config_data
     activation_word = config_data.get('activation_word', "").strip().lower()
     
-    # Print the activation_word for debugging
     print("Activation word:", activation_word)
 
     while True:
@@ -189,7 +186,7 @@ def action():
     process_response('co chcesz zrobić?')
     fraze = speech(sr.Recognizer())
     try:
-        with open("dane.json", 'r') as file:  # Use 'r' for reading text
+        with open("dane.json", 'r') as file:
             data = json.load(file)
             time_get = int(data.get('time_interval', ""))
     except FileNotFoundError:
@@ -377,11 +374,9 @@ def get_month_number(month_name):
         "grudzień": "12",
     }
 
-    # Check if the input is already a number
     if month_name.isdigit() and 1 <= int(month_name) <= 12:
         return f"{int(month_name):02}"
 
-    # Convert spoken representation to number
     result = months_mapping.get(month_name.lower(), None)
 
     if result:
@@ -422,12 +417,8 @@ def send_message(service, user_id, message):
 def setup_gmail_api():
     SCOPES = ['https://www.googleapis.com/auth/gmail.send']
     creds = None
-    # The file token3.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
     if os.path.exists('token3.json'):
         creds = Credentials.from_authorized_user_file('token3.json')
-    # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -435,7 +426,6 @@ def setup_gmail_api():
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
         with open('token3.json', 'w') as token:
             token.write(creds.to_json())
     return build('gmail', 'v1', credentials=creds)
@@ -556,7 +546,7 @@ def CalOpen():
             if any(word in fraze for word in ["sprawdź", "podaj"]):
 
                 service = build("calendar", "v3", credentials=creds)
-                now = datetime.utcnow().isoformat() + "Z"  # 'Z' indicates UTC time
+                now = datetime.utcnow().isoformat() + "Z"
                 events_result = (
                     service.events()
                     .list(
@@ -572,7 +562,6 @@ def CalOpen():
 
                 for event in events:
                     start = event["start"].get("dateTime", event["start"].get("date"))
-                    # Parsuj datę i czas, a następnie wybierz tylko datę
                     start_date = datetime.strptime(start, "%Y-%m-%dT%H:%M:%S%z")
                     process_response_cal(start_date.strftime("%Y-%m-%d"), event["summary"])
     except HttpError as error:
@@ -677,7 +666,6 @@ def add_cal():
                 start_time_iso = start_datetime.isoformat()
                 end_time_iso = end_time.isoformat()
 
-                # Sprawdź konflikty przed dodaniem spotkania
                 if not is_event_conflict(calendar_service, start_time_iso, end_time_iso):
                     add_event_to_calendar(calendar_service, summary, start_time_iso, end_time_iso)
                 else:
@@ -707,7 +695,7 @@ def get_rep_mail_from_json():
         print("Error decoding JSON file.")
         return None
 
-
+#formularz
 def create_form():
     def on_entry_click(event):
         if time_entry_var.get() == 'Czas odczytu maili (w godzinach)':
@@ -811,13 +799,12 @@ def create_form():
     submit_button = tk.Button(app, text="zapisz dane", command=submit_form)
     submit_button.pack()
 
-    # Uruchom pętlę główną
     app.mainloop()
 
 
 
 
-#Formularz
+
 def run_on_first_start():
     if not os.path.isfile("Dane.json"):
         with open("Dane.json", "w") as file:
