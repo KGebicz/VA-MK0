@@ -1,4 +1,3 @@
-import datetime, time
 import webbrowser
 import os
 import requests
@@ -24,7 +23,11 @@ from datetime import datetime, timedelta
 import threading
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
+from tkinter import ttk
+from tkinter import messagebox
 import json
+import shutil
 
 
 
@@ -55,34 +58,65 @@ def speech(r):
             print(f"Błąd związany z usługą rozpoznawania mowy: {e}")
             return None
 def Speech_Start_Stop():
+    def get_config_from_json():
+        try:
+            with open('dane.json', 'r', encoding='utf-8') as json_file:
+                data = json.load(json_file)
+                if isinstance(data, dict):
+                    return data
+                else:
+                    print(f'Błąd: Plik {"dane.json"} nie zawiera poprawnych danych konfiguracyjnych.')
+                    return {}
+        except FileNotFoundError:
+            print(f'Plik {"dane.json"} nie został znaleziony.')
+            return {}
+        except json.JSONDecodeError as json_error:
+            print(f'Wystąpił błąd podczas dekodowania pliku JSON: {"dane.json"}')
+            print(f'Szczegóły błędu: {json_error}')
+            return {}
+        except Exception as e:
+            print(f'Inny błąd: {e}')
+            return {}
+
+    def recognize_speech():
+        with sr.Microphone() as source:
+            print("Czekam na wypowiedź...")
+            audio = r.listen(source, timeout=0.0)
+            return r.recognize_google(audio, language="pl").lower()
+
     r = sr.Recognizer()
+    config_data = get_config_from_json()
     
+    # Print the entire content of the config_data for debugging
+    print("Config data:", config_data)
+    
+    # Use the provided activation_word or get it from the config_data
+    activation_word = config_data.get('activation_word', "").strip().lower()
+    
+    # Print the activation_word for debugging
+    print("Activation word:", activation_word)
+
     while True:
         try:
-            with sr.Microphone() as source2:
-                print("Czekam na wypowiedź...")
-                audio2 = r.listen(source2, timeout=0.0)
-                MyText = r.recognize_google(audio2, language="pl")
-                MyText = MyText.lower()
+            MyText = recognize_speech()
+            print("Rozpoznano tekst:", MyText)
 
-                print("Rozpoznano tekst: {}".format(MyText))
+            if activation_word in MyText:
+                print(f"Wykryto wypowiedź '{activation_word}'. Uruchamiam odpowiednią akcję.")
+                action()
 
-                # Sprawdzamy, czy wypowiedziano "cześć" i reagujemy odpowiednio
-                if "cześć" in MyText:
-                    print("Wykryto wypowiedź 'cześć'. Uruchamiam odpowiednią akcję.")
-                    action()
-
-                PanicWords = ["stop zero jeden", "stop 01","top 01"]
-                # Sprawdzamy, czy wypowiedziano którekolwiek z słów kluczowych z PanicWords
-                if any(word in MyText for word in PanicWords):
-                    print("Wykryto wypowiedź z listy słów kluczowych. Zatrzymuję program.")
-                    break
+            panic_words = ["stop zero jeden", "stop 01", "top 01"]
+            if any(word in MyText for word in panic_words):
+                print("Wykryto wypowiedź z listy słów kluczowych. Zatrzymuję program.")
+                break
 
         except sr.UnknownValueError:
             print("Nie rozpoznano żadnej wypowiedzi.")
-        
+
         except sr.RequestError as e:
             print(f"Błąd związany z usługą rozpoznawania mowy: {e}")
+
+     
 def Take_data_to_login(choice):
     process_file('Dane.json', 'Password', mode='decrypt')
     with open('rep.json', 'r') as file:
@@ -154,8 +188,22 @@ def process_response_cal(start, summary):
 def action():
     process_response('co chcesz zrobić?')
     fraze = speech(sr.Recognizer())
+    try:
+        with open("dane.json", 'r') as file:  # Use 'r' for reading text
+            data = json.load(file)
+            time_get = int(data.get('time_interval', ""))
+    except FileNotFoundError:
+        print(f'Plik {"dane.json"} nie został znaleziony.')
+        time_get = 24
+    except json.JSONDecodeError as json_error:
+        print(f'Wystąpił błąd podczas dekodowania pliku JSON: {"dane.json"}')
+        print(f'Szczegóły błędu: {json_error}')
+        time_get = 24
+    except Exception as e:
+        print(f'Inny błąd: {e}')
+        time_get = 24
     if fraze:
-            if any(word in fraze for word in ["przeglądarka", "otwórz stronę", "odpal stronę"]):
+            if any(word in fraze for word in ["przeglądarka", "otwórz stronę", "odpal stronę","strona"]):
                 webOpen()
             elif any(word in fraze for word in ["wyszukaj", "poszukaj", "sprawdź", "check"]):
                 webOpenwithQuestion()
@@ -163,7 +211,7 @@ def action():
                 process_response("chcesz sprawdzić czy wysłać")
                 wyb=speech(sr.Recognizer())
                 if any(word in wyb for word in ["sprawdź", "sprawdze", "check"]):
-                    MailOpen()
+                    MailOpen(time_get)
                 elif any(word in wyb for word in ["wyśle", "wysli", "wysłać"]):
                     send_email_command()  
                 else:
@@ -183,6 +231,8 @@ def action():
                 toReport()
             elif any(word in fraze for word in ["pogoda", "weather"]):
                 weather()
+            else:
+                toReport()
             
 #TO FUNCTION
 SCOPES1 = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -277,22 +327,40 @@ def authenticate_and_build_calendar_service():
         return None
 def add_event_to_calendar(calendar_service, summary, start_time, end_time):
     try:
-        event = {
-            'summary': summary,
-            'start': {
-                'dateTime': start_time,
-                'timeZone': 'Europe/Warsaw',  # Change to your time zone
-            },
-            'end': {
-                'dateTime': end_time,
-                'timeZone': 'Europe/Warsaw',  # Change to your time zone
-            },
-        }
+        with open("Dane.json", 'rb') as file:
+            encrypted_data = file.read()
 
-        created_event = calendar_service.events().insert(calendarId='primary', body=event).execute()
-        print(f'Event created: {created_event.get("htmlLink")}')
-    except HttpError as error:
-        print(f"An error occurred: {error}")
+        decrypted_data = decrypt(encrypted_data, 'password')
+        data = json.loads(decrypted_data.decode('utf-8'))
+
+        if data:
+            time_zone = data.get('time_zone', 'Europe/Warsaw')
+        else:
+            time_zone = "Europe/Warsaw"
+
+        try:
+            event = {
+                'summary': summary,
+                'start': {
+                    'dateTime': start_time,
+                    'timeZone': time_zone,
+                },
+                'end': {
+                    'dateTime': end_time,
+                    'timeZone': time_zone,
+                },
+            }
+
+            created_event = calendar_service.events().insert(calendarId='primary', body=event).execute()
+            print(f'Utworzono wydarzenie: {created_event.get("htmlLink")}')
+        except HttpError as error:
+            print(f"Wystąpił błąd: {error}")
+    except FileNotFoundError:
+        print(f'Plik {"Dane.json"} nie został znaleziony.')
+        return None
+    except json.JSONDecodeError:
+        print(f'Wystąpił błąd podczas dekodowania pliku JSON: {"Dane.json"}')
+        return None     
 def get_month_number(month_name):
     months_mapping = {
         "styczeń": "01",
@@ -374,7 +442,43 @@ def setup_gmail_api():
 def send_report_email(service, recipient_email, subject, body):
     message = create_message(sender='email', to=recipient_email, subject=subject, body=body)
     send_message(service, 'me', message)
+def word_to_number(word):
+    word_dict = {
+        'pierwszy': 1,
+        'drugi': 2,
+        'trzeci': 3,
+        'czwarty': 4,
+        'piąty': 5,
+        'szósty': 6,
+        'siódmy': 7,
+        'ósmy': 8,
+        'dziewiąty': 9,
+        'dziesiąty': 10,
+        'jedenasty': 11,
+        'dwunasty': 12,
+        'trzynasty': 13,
+        'czternasty': 14,
+        'piętnasty': 15,
+        'szesnasty': 16,
+        'siedemnasty': 17,
+        'osiemnasty': 18,
+        'dziewiętnasty': 19,
+        'dwudziesty': 20,
+        'dwudziesty pierwszy': 21,
+        'dwudziesty drugi': 22,
+        'dwudziesty trzeci': 23,
+        'dwudziesty czwarty': 24,
+        'dwudziesty piąty': 25,
+        'dwudziesty szósty': 26,
+        'dwudziesty siódmy': 27,
+        'dwudziesty ósmy': 28,
+        'dwudziesty dziewiąty': 29,
+        'trzydziesty': 30,
+        'trzydziesty pierwszy': 31,
+    }
 
+    lowercase_word = word.lower()
+    return word_dict.get(lowercase_word, None)
 #FUNCTIONs
 
 def webOpen():
@@ -386,7 +490,7 @@ def webOpenwithQuestion():
 
     if query:
         search_url = f"https://google.com/search?q={query}"
-        process_response(f'Wyszukuję definicje dla: {query}')
+        process_response(f'Wyszukuję informacji dla: {query}')
         webbrowser.open(search_url)
 def transOpen():
     process_response("Czy chcesz coś przetłumaczyć za pomocą głosu?")
@@ -424,11 +528,11 @@ def weather():
         print(f'Pogoda w {lokalizacja}:')
         print(dane)
 
-        # Odczytujemy dane pogodowe odpowiedzią głosową
         process_response(f'Pogoda w {lokalizacja}: {dane}')
     else:
         print('Nie udało się pobrać danych pogodowych.')
         process_response('Nie udało się pobrać danych pogodowych.')
+
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 def CalOpen():
     creds = None
@@ -473,45 +577,69 @@ def CalOpen():
                     process_response_cal(start_date.strftime("%Y-%m-%d"), event["summary"])
     except HttpError as error:
         print(f"An error occurred: {error}")            
-def MailOpen():
-    query = "in:important"
-
+def load_configuration():
     try:
+        with open('dane.json', 'r') as file:
+            config_data = json.load(file)
+        return config_data
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        return None
+def MailOpen(time_to_check):
+    try:
+        config_data = load_configuration()
+
         service = authenticate_and_build_service()
         if service:
+            start_date = datetime.utcnow() - timedelta(hours=time_to_check)
+            query = f"in:important after:{int(start_date.timestamp())}"
+
             emails = authenticate_and_fetch_emails(service, query)
 
             if emails:
-                speak("Oto tytuły ostatnich 3 maili w folderze 'Important':")
-                for i, email in enumerate(emails[:3], start=1):
+                speak(f"Oto tytuły maili z ostatnich {time_to_check} godzin w folderze 'Important':")
+                for i, email in enumerate(emails, start=1):
                     email_id = email['id']
-                    email_data = service.users().messages().get(userId="me", id=email_id).execute()
-                    subject = next(header['value'] for header in email_data['payload']['headers'] if header['name'] == 'Subject')
-                    speak(f"Tytuł maila {i}: {subject}")
+                    try:
+                        email_data = service.users().messages().get(userId="me", id=email_id).execute()
+                        subject = next((header['value'] for header in email_data['payload']['headers'] if header['name'] == 'Subject'), 'Brak tematu')
+                        speak(f"Tytuł maila {i}: {subject}")
+                    except Exception as e:
+                        print(f"Error fetching email details: {e}")
+                        speak(f"Błąd podczas pobierania szczegółów maila {i}.")
+
             else:
-                speak("Brak maili w folderze 'Important'.")
+                speak(f"Brak maili z ostatnich {time_to_check} godzin w folderze 'Important'.")
         else:
             speak("Wystąpił błąd podczas uwierzytelniania usługi Gmail.")
     except Exception as e:
         print(f"Wystąpił błąd podczas pobierania maili: {e}")
         speak("Wystąpił błąd podczas pobierania maili.")
-
 def send_email_command():
-    process_response("podaj maila")
-    mail = speech(sr.Recognizer())
-    to_address = "kgebicz11@gmail.com"
-    process_response("podaj temat")
-    tem = speech(sr.Recognizer())
-    subject = "testowy"
-    
-    speak("Prosze powiedz treść e-maila.")
+    process_response("Podaj adres e-mail, podaj tylko część przed @gmail.com")
+    email_name = speech(sr.Recognizer())
+    to_address = email_name.lower() + "@gmail.com"
+    process_response("Podaj temat e-maila")
+    subject = speech(sr.Recognizer())
+
+    speak("Proszę powiedz treść e-maila.")
     body = speech(sr.Recognizer())
 
     if body:
         try:
             service = authenticate_and_build_service2()
+            
             if service:
-                send_email(service, to_address, subject, body)
+                process_response("Czy na pewno chcesz wysłać e-mail?")
+                send_confirmation=speech(sr.Recognizer)
+                
+                
+                
+                if send_confirmation == "tak":
+                    send_email(service, to_address, subject, body)
+                    process_response("E-mail został wysłany.")
+                else:
+                    process_response("Anulowano wysyłanie e-maila.")
             else:
                 speak("Wystąpił błąd podczas uwierzytelniania usługi Gmail.")
         except Exception as e:
@@ -521,7 +649,6 @@ def add_cal():
     calendar_service = authenticate_and_build_calendar_service()
 
     if calendar_service:
-        # Poproś użytkownika o podanie informacji
         process_response("Podaj nazwę spotkania")
         summary = speech(sr.Recognizer())
 
@@ -532,15 +659,16 @@ def add_cal():
         if start_month_number:
             process_response("Podaj dzień w którym będzie spotkanie")
             start_day_date = speech(sr.Recognizer())
-
+            start_day_number = word_to_number(start_day_date)
+            
             process_response("Podaj czas rozpoczęcia spotkania godzina, minuta")
             start_time = speech(sr.Recognizer())
 
-            process_response("Podaj czas spotkania w minutach")
+            process_response("Podaj czas spotkania w minutach, podaj tylko liczbę")
             duration_str = speech(sr.Recognizer())
 
-            start_date = f"{start_month_number}-{start_day_date}"
-
+            start_date = f"{start_month_number}-{start_day_number}"
+            
             try:
                 start_datetime_str = f"{datetime.now().year}-{start_date} {start_time}:00"
                 start_datetime = datetime.strptime(start_datetime_str, "%Y-%m-%d %H:%M:%S")
@@ -558,42 +686,135 @@ def add_cal():
                 print("Błąd: Nieprawidłowy format daty i czasu. Upewnij się, że używasz poprawnego formatu.")
         else:
             print("Błędny miesiąc. Spróbuj ponownie.")
-def toReport(service):
+def toReport(service, rep_mail):
     process_response('Proszę podać treść maila.')
     treść_maila = speech(sr.Recognizer())
 
     if treść_maila:
-        send_report_email(service, 'kgebicz11@gmail.com', 'RAPORT', treść_maila)
+        recipient_email = get_rep_mail_from_json()
+        if recipient_email:
+            send_report_email(service, recipient_email, 'RAPORT', treść_maila)
+
+def get_rep_mail_from_json():
+    try:
+        with open("dane.json", 'r', encoding='utf-8') as json_file:
+            data = json.load(json_file)
+            return data.get("Rep_Mail")
+    except FileNotFoundError:
+        print("File 'dane.json' not found.")
+        return None
+    except json.JSONDecodeError:
+        print("Error decoding JSON file.")
+        return None
 
 
+def create_form():
+    def on_entry_click(event):
+        if time_entry_var.get() == 'Czas odczytu maili (w godzinach)':
+            time_entry_var.set('')
+            time_entry.config(fg='black')
 
-#autoryzacja
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/calendar.readonly"]
-CLIENT_SECRET_FILE = "credentials.json"  # Plik JSON pobrany z Konsoli Programisty Google
-TOKEN_FILE = "token.json"
-def authenticate_with_password(username, password):
-    flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+    def browse_file():
+        file_path = filedialog.askopenfilename()
 
-    credentials = Credentials.from_authorized_user_info(
-        client_id=flow.client_config["client_id"],
-        client_secret=flow.client_config["client_secret"],
-        scopes=SCOPES,
-    )
+        if file_path:
+            directory, original_filename = os.path.split(file_path)
+            new_file_path = os.path.join(directory, "credentials.json")
 
-    # Uzyskanie tokenu dostępu za pomocą loginu i hasła
-    credentials.fetch_token(
-        "https://oauth2.googleapis.com/token",
-        authorization_response=None,
-        username=username,
-        password=password,
-    )
+            os.rename(file_path, new_file_path)
 
-    # Zapisz uzyskane poświadczenia do pliku
-    credentials.to_json_file(TOKEN_FILE)
+            file_var.set(new_file_path)
 
-    # Zbuduj i zwróć obiekt usługi Gmail z uwierzytelnionymi danymi
-    service = build("gmail", "v1", credentials=credentials)
-    return service
+    def save_data(selected_file, time_interval, activation_word):
+        data_to_save = {
+            "selected_file": selected_file,
+            "time_interval": time_interval,
+            "activation_word": activation_word,
+            "category": "kgebicz11@gmail.com",  
+        }
+
+        with open("dane.json", 'w', encoding='utf-8') as json_file:
+            json.dump(data_to_save, json_file, ensure_ascii=False)
+
+    def submit_form():
+        selected_file = file_var.get()
+        time_interval = time_entry_var.get()
+        activation_word = activation_var.get()
+
+        if not selected_file:
+            result = messagebox.askquestion("Brak pliku", "Nie dodano pliku! Kontynuować bez pliku?")
+            if result == 'yes':
+                selected_file = "Brak pliku"
+                save_data(selected_file, time_interval, activation_word)
+                app.destroy()
+                return
+            else:
+                return
+
+        if not time_interval or time_interval == 'Czas odczytu maili (w godzinach)':
+            messagebox.showerror("Błąd", "Nie uzupełniono czasu!")
+            return
+
+        project_folder = os.getcwd()
+        destination_path = os.path.join(project_folder, os.path.basename(selected_file))
+
+        try:
+            os.rename(selected_file, destination_path)
+        except FileNotFoundError as e:
+            messagebox.showerror("Błąd", f"Plik nie został znaleziony: {e}")
+            return
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Wystąpił błąd podczas przenoszenia pliku: {e}")
+            return
+
+        save_data(destination_path, time_interval, activation_word)
+        messagebox.showinfo("Sukces", "Dane zostały zapisane!")
+    
+    
+    app = tk.Tk()
+    app.title("Formularz Projektu")
+    app.geometry("400x300")
+    main_frame = tk.Frame(app)
+    main_frame.pack(padx=10, pady=10)
+    file_label = tk.Label(main_frame, text="Dodaj plik do projektu:")
+    file_label.grid(row=0, column=0, sticky="w")
+
+    file_var = tk.StringVar()
+    file_entry = ttk.Entry(main_frame, textvariable=file_var, state="readonly")
+    file_entry.grid(row=0, column=1, padx=(0, 5), sticky="w")
+
+    browse_button = tk.Button(main_frame, text="Przeglądaj", command=browse_file)
+    browse_button.grid(row=0, column=2, padx=(0, 5), sticky="w")
+
+    time_entry_var = tk.StringVar()
+    time_entry = ttk.Entry(main_frame, textvariable=time_entry_var)
+    time_entry.grid(row=1, column=1, pady=5, sticky="w")
+
+    time_label = tk.Label(main_frame, text="Czas odczytu maili (w godzinach):")
+    time_label.grid(row=1, column=0, pady=5, sticky="w")
+
+    time_entry.bind('<FocusIn>', on_entry_click)
+
+    activation_label = tk.Label(main_frame, text="Słowo aktywacyjne:")
+    activation_label.grid(row=2, column=0, pady=5, sticky="w")
+
+    activation_options = ["cześć", "hej", "witam"]
+    activation_var = tk.StringVar(main_frame)
+    activation_var.set(activation_options[0])
+
+    activation_menu = tk.OptionMenu(main_frame, activation_var, *activation_options)
+    activation_menu.grid(row=2, column=1, padx=5, pady=5, sticky="w")
+
+    spacer_label3 = tk.Label(main_frame, text="", pady=10)
+    spacer_label3.grid(row=3, column=0, columnspan=3)
+
+    submit_button = tk.Button(app, text="zapisz dane", command=submit_form)
+    submit_button.pack()
+
+    # Uruchom pętlę główną
+    app.mainloop()
+
+
 
 
 #Formularz
@@ -601,78 +822,8 @@ def run_on_first_start():
     if not os.path.isfile("Dane.json"):
         with open("Dane.json", "w") as file:
             create_form()
-def create_form():
-    def submit_form():
-        name = entry_name.get()
-        email1 = entry_email1.get()
-        password1 = entry_password1.get()
+    else:
+        thread = threading.Thread(target=Speech_Start_Stop)
+        thread.start()
 
-        data = {
-            "Name": name,
-            "Forms": [
-                {"Name": "Email & Password", "Entries": [
-                    {"Email": email1, "Password": password1}
-                ]}
-            ],
-            "Greetings": greeting_var.get(),
-            "TimePeriod": time_period_var.get()
-        }
-
-        with open("Dane.json", "w") as file:
-            json.dump(data, file, indent=4)
-            print("Dane zapisane do dane.json")
-        root.destroy()
-        process_file('Dane.json', 'Password', mode='encrypt')
-
-    root = tk.Tk()
-    root.title("Multiple Forms")
-
-    # Tworzenie etykiet i pól do wprowadzania imienia
-    label_name = tk.Label(root, text="Imię:")
-    label_name.grid(row=0, column=0, padx=10, pady=5)
-    entry_name = tk.Entry(root)
-    entry_name.grid(row=0, column=1, padx=10, pady=5)
-
-    # Ramka dla Email & Password
-    frame_email_password = tk.LabelFrame(root, text="Email & Password")
-    frame_email_password.grid(row=1, columnspan=2, padx=10, pady=5)
-
-    label_email1 = tk.Label(frame_email_password, text="Email:")
-    label_email1.grid(row=0, column=0, padx=10, pady=5)
-    entry_email1 = tk.Entry(frame_email_password)
-    entry_email1.grid(row=0, column=1, padx=10, pady=5)
-
-    label_password1 = tk.Label(frame_email_password, text="Hasło:")
-    label_password1.grid(row=1, column=0, padx=10, pady=5)
-    entry_password1 = tk.Entry(frame_email_password, show="*")
-    entry_password1.grid(row=1, column=1, padx=10, pady=5)
-
-    # Przyciski wyboru i pole dla okresu czasu
-    label_greetings = tk.Label(root, text="Pozdrowienia:")
-    label_greetings.grid(row=2, column=0, padx=10, pady=5)
-    greeting_var = tk.StringVar()
-    select_button_hello = ttk.Checkbutton(root, text="Cześć", variable=greeting_var, onvalue="Cześć")
-    select_button_hello.grid(row=2, column=1, padx=10, pady=5)
-    select_button_hi = ttk.Checkbutton(root, text="Hej", variable=greeting_var, onvalue="Hej")
-    select_button_hi.grid(row=2, column=2, padx=10, pady=5)
-    select_button_bye = ttk.Checkbutton(root, text="Pa", variable=greeting_var, onvalue="Pa")
-    select_button_bye.grid(row=2, column=3, padx=10, pady=5)
-
-    label_time_period = tk.Label(root, text="Okres sprawdzania maili (w godzinach):")
-    label_time_period.grid(row=3, column=0, padx=10, pady=5)
-    time_period_var = tk.StringVar()
-    time_period_entry = tk.Entry(root, textvariable=time_period_var)
-    time_period_entry.grid(row=3, column=1, padx=10, pady=5)
-
-    # Przycisk do przesyłania
-    submit_button = tk.Button(root, text="Prześlij", command=submit_form)
-    submit_button.grid(row=4, column=0, columnspan=2, pady=10)
-
-    root.mainloop()
-    authenticate_with_password("123","123")
 run_on_first_start()
-
-
-
-thread = threading.Thread(target=Speech_Start_Stop)
-thread.start()

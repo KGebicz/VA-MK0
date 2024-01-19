@@ -210,3 +210,119 @@
 #     root.mainloop()
 # create_form()
 }
+
+
+
+import tkinter as tk
+from tkinter import filedialog
+from tkinter import ttk
+from tkinter import messagebox
+import json
+
+def on_entry_click(event):
+    if time_entry_var.get() == 'Czas odczytu maili (w godzinach)':
+        time_entry_var.set('')
+        time_entry.config(fg='black')
+
+def browse_file():
+    file_path = filedialog.askopenfilename()
+    file_var.set(file_path)
+
+def submit_form():
+    selected_file = file_var.get()
+    time_interval = time_entry_var.get()
+    activation_word = activation_var.get()
+
+    if not selected_file:
+        result = messagebox.askquestion("Brak pliku", "Nie dodano pliku! Kontynuować bez pliku?")
+        if result == 'yes':
+            # Kontynuuj bez pliku
+            selected_file = "Brak pliku"
+
+            # Zapisz dane do pliku JSON
+            save_data(selected_file, time_interval, activation_word)
+
+            # Zamknij okno
+            app.destroy()
+            return
+        else:
+            # Uzupełnij dane
+            return
+
+    if not time_interval or time_interval == 'Czas odczytu maili (w godzinach)':
+        messagebox.showerror("Błąd", "Nie uzupełniono czasu!")
+        return
+
+    # Zapisz dane do pliku JSON
+    save_data(selected_file, time_interval, activation_word)
+
+    # Tutaj możesz użyć pobranych wartości do dalszej obróbki
+    print(f"Selected File: {selected_file}")
+    print(f"Time Interval: {time_interval} hours")
+    print(f"Activation Word: {activation_word}")
+
+    # Dodano messagebox z informacją o zapisie
+    messagebox.showinfo("Sukces", "Dane zostały zapisane!")
+
+def save_data(selected_file, time_interval, activation_word):
+    data_to_save = {
+        "selected_file": selected_file,
+        "time_interval": time_interval,
+        "activation_word": activation_word
+    }
+
+    with open("dane.json", 'w') as json_file:
+        json.dump(data_to_save, json_file)
+
+# Utwórz główne okno aplikacji
+app = tk.Tk()
+app.title("Formularz Projektu")
+
+# Ustaw rozmiar okna
+app.geometry("400x300")
+
+# Utwórz ramkę główną
+main_frame = tk.Frame(app)
+main_frame.pack(padx=10, pady=10)
+
+# Dodaj elementy do formularza w ramce
+file_label = tk.Label(main_frame, text="Dodaj plik do projektu:")
+file_label.grid(row=0, column=0, sticky="w")
+
+file_var = tk.StringVar()
+file_entry = ttk.Entry(main_frame, textvariable=file_var, state="readonly")
+file_entry.grid(row=0, column=1, padx=(0, 5), sticky="w")
+
+browse_button = tk.Button(main_frame, text="Przeglądaj", command=browse_file)
+browse_button.grid(row=0, column=2, padx=(0, 5), sticky="w")
+
+# Dodaj entry dla ilości godzin
+time_entry_var = tk.StringVar()
+time_entry = ttk.Entry(main_frame, textvariable=time_entry_var)
+time_entry.grid(row=1, column=1, pady=5, sticky="w")
+
+time_label = tk.Label(main_frame, text="Czas odczytu maili (w godzinach):")
+time_label.grid(row=1, column=0, pady=5, sticky="w")
+
+# Dodaj obsługę zdarzenia dla kliknięcia w pole tekstowe
+time_entry.bind('<FocusIn>', on_entry_click)
+
+activation_label = tk.Label(main_frame, text="Słowo aktywacyjne:")
+activation_label.grid(row=2, column=0, pady=5, sticky="w")
+
+activation_options = ["cześć", "hej", "witam"]
+activation_var = tk.StringVar(main_frame)
+activation_var.set(activation_options[0])  # Domyślna wartość
+
+activation_menu = tk.OptionMenu(main_frame, activation_var, *activation_options)
+activation_menu.grid(row=2, column=1, padx=5, pady=5, sticky="w")
+
+# Dodaj pusty element jako spacer
+spacer_label3 = tk.Label(main_frame, text="", pady=10)
+spacer_label3.grid(row=3, column=0, columnspan=3)
+
+submit_button = tk.Button(app, text="zapisz dane", command=submit_form)
+submit_button.pack()
+
+# Uruchom pętlę główną
+app.mainloop()
